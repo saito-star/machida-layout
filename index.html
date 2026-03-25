@@ -783,18 +783,37 @@ document.getElementById('btnPDF').addEventListener('click', async () => {
   info('PDF生成中...');
   const floor = document.getElementById('floor');
 
-  // Temporarily deselect to hide selection UI
+  // Temporarily deselect to hide selection glow/buttons
   const prevSel = sel;
   if (sel) { sel.classList.remove('sel'); }
+
+  // Temporarily fix text clipping: remove overflow:hidden, enlarge labels
+  const items = document.querySelectorAll('.pitem');
+  items.forEach(el => {
+    el.style.overflow = 'visible';
+    const lbl = el.querySelector('.lbl');
+    if (lbl) {
+      lbl.dataset.origStyle = lbl.style.cssText;
+      lbl.style.fontSize = '10px';
+      lbl.style.whiteSpace = 'nowrap';
+      lbl.style.background = el.dataset.color || el.style.background;
+      lbl.style.padding = '1px 3px';
+      lbl.style.borderRadius = '2px';
+    }
+  });
 
   try {
     const canvas = await html2canvas(floor, {
       backgroundColor: '#242424',
-      scale: 2,
+      scale: 3,
       useCORS: true,
       logging: false,
       ignoreElements: (el) => {
-        return el.classList && (el.classList.contains('dbtn') || el.classList.contains('rbtn'));
+        return el.classList && (
+          el.classList.contains('dbtn') ||
+          el.classList.contains('rbtn') ||
+          el.classList.contains('comment-indicator')
+        );
       }
     });
 
@@ -827,6 +846,15 @@ document.getElementById('btnPDF').addEventListener('click', async () => {
     console.error('PDF export error:', err);
     info('PDF出力エラー: ' + err.message);
   } finally {
+    // Restore styles
+    items.forEach(el => {
+      el.style.overflow = 'hidden';
+      const lbl = el.querySelector('.lbl');
+      if (lbl && lbl.dataset.origStyle !== undefined) {
+        lbl.style.cssText = lbl.dataset.origStyle;
+        delete lbl.dataset.origStyle;
+      }
+    });
     if (prevSel) { prevSel.classList.add('sel'); sel = prevSel; }
   }
 });
