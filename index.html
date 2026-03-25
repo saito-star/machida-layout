@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <title>什器レイアウトツール</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
 body { background:#1c1c1c; color:#e8e2d9; font-family:'Courier New',monospace; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
@@ -88,6 +90,7 @@ header span { font-size:11px; color:#555; }
   <div class="controls">
     <button class="btn active" id="btnGrid">グリッド ON</button>
     <button class="btn active" id="btnSnap">スナップ ON</button>
+    <button class="btn" id="btnPDF" style="background:#2a2a3a;border-color:#4a4a6a;color:#aac">PDF出力</button>
     <button class="btn" id="btnClear">全削除</button>
   </div>
 </header>
@@ -96,7 +99,14 @@ header span { font-size:11px; color:#555; }
     <!-- Property panel for selected item -->
     <div class="prop-panel" id="propPanel">
       <h2>選択中の什器</h2>
-      <div style="font-size:11px;color:#ccc;margin-bottom:8px;" id="propName"></div>
+      <div class="prop-row">
+        <label>名</label>
+        <input type="text" id="propLabel" style="flex:1">
+      </div>
+      <div class="prop-row">
+        <label>色</label>
+        <input type="color" id="propColor" style="width:36px;height:22px;padding:1px;border:1px solid #444;background:#222;cursor:pointer;">
+      </div>
       <div class="prop-row">
         <label>W</label>
         <input type="number" id="propW" min="100" step="50">
@@ -116,7 +126,7 @@ header span { font-size:11px; color:#555; }
         <input type="text" id="propComment" placeholder="コメントを入力...">
       </div>
       <div class="prop-row">
-        <button class="prop-btn" id="propApply">サイズ適用</button>
+        <button class="prop-btn" id="propApply">適用</button>
         <button class="prop-btn" id="propCommentApply">メモ保存</button>
       </div>
     </div>
@@ -643,7 +653,8 @@ function updatePropPanel() {
   const panel = document.getElementById('propPanel');
   if (!sel) { panel.classList.remove('visible'); return; }
   panel.classList.add('visible');
-  document.getElementById('propName').textContent = sel.dataset.label;
+  document.getElementById('propLabel').value = sel.dataset.label;
+  document.getElementById('propColor').value = sel.dataset.color;
   document.getElementById('propW').value = sel.dataset.wmm;
   document.getElementById('propH').value = sel.dataset.hmm;
   document.getElementById('propRot').value = sel.dataset.rot;
@@ -683,13 +694,21 @@ document.getElementById('propApply').addEventListener('click', () => {
   const h = parseInt(document.getElementById('propH').value);
   const rot = parseInt(document.getElementById('propRot').value) || 0;
   if (w < 50 || h < 50) return;
+  const newLabel = document.getElementById('propLabel').value.trim();
+  const newColor = document.getElementById('propColor').value;
   sel.dataset.wmm = w;
   sel.dataset.hmm = h;
   sel.dataset.rot = rot;
+  if (newLabel) {
+    sel.dataset.label = newLabel;
+    sel.querySelector('.lbl').textContent = newLabel;
+  }
+  sel.dataset.color = newColor;
+  sel.style.background = newColor;
   sel.style.width = (w * S) + 'px';
   sel.style.height = (h * S) + 'px';
   sel.style.transform = `rotate(${rot}deg)`;
-  info(`サイズ変更: ${sel.dataset.label} → ${w}×${h}mm / ${rot}°`);
+  info(`変更適用: ${sel.dataset.label} → ${w}×${h}mm / ${rot}°`);
 });
 
 document.getElementById('propRot90').addEventListener('click', () => {
@@ -715,7 +734,7 @@ document.getElementById('propComment').addEventListener('keydown', e => {
 });
 
 // Enter key in size/rot fields
-['propW','propH','propRot'].forEach(id => {
+['propLabel','propW','propH','propRot'].forEach(id => {
   document.getElementById(id).addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('propApply').click();
   });
@@ -756,6 +775,61 @@ document.getElementById('btnClear').addEventListener('click',()=>{
   document.querySelectorAll('.pitem').forEach(e=>e.remove()); sel=null; updatePropPanel(); info('全削除しました');
 });
 function info(m) { document.getElementById('info').textContent=m; }
+
+// ================================================================
+// PDF EXPORT
+// ================================================================
+document.getElementById('btnPDF').addEventListener('click', async () => {
+  info('PDF生成中...');
+  const floor = document.getElementById('floor');
+
+  // Temporarily deselect to hide selection UI
+  const prevSel = sel;
+  if (sel) { sel.classList.remove('sel'); }
+
+  try {
+    const canvas = await html2canvas(floor, {
+      backgroundColor: '#242424',
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      ignoreElements: (el) => {
+        return el.classList && (el.classList.contains('dbtn') || el.classList.contains('rbtn'));
+      }
+    });
+
+    const imgData = canvas.toDataURL('image/png');
+    const imgW = canvas.width;
+    const imgH = canvas.height;
+
+    const { jsPDF } = window.jspdf;
+    const orientation = imgW > imgH ? 'landscape' : 'portrait';
+    const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a3' });
+
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 10;
+    const availW = pageW - margin * 2;
+    const availH = pageH - margin * 2;
+
+    const ratio = Math.min(availW / imgW, availH / imgH);
+    const pdfImgW = imgW * ratio;
+    const pdfImgH = imgH * ratio;
+
+    const offsetX = margin + (availW - pdfImgW) / 2;
+    const offsetY = margin + (availH - pdfImgH) / 2;
+
+    pdf.addImage(imgData, 'PNG', offsetX, offsetY, pdfImgW, pdfImgH);
+    pdf.save('floor-layout.pdf');
+
+    info('PDF出力完了');
+  } catch (err) {
+    console.error('PDF export error:', err);
+    info('PDF出力エラー: ' + err.message);
+  } finally {
+    if (prevSel) { prevSel.classList.add('sel'); sel = prevSel; }
+  }
+});
 
 // ================================================================
 // SUPABASE PERSISTENCE
