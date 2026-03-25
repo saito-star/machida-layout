@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>什器レイアウトツール</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:#1c1c1c; color:#e8e2d9; font-family:'Courier New',monospace; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+header { background:#111; border-bottom:1px solid #333; padding:10px 20px; display:flex; align-items:center; gap:16px; flex-shrink:0; }
+header h1 { font-size:13px; letter-spacing:.15em; color:#c8a96e; text-transform:uppercase; }
+header span { font-size:11px; color:#555; }
+.controls { margin-left:auto; display:flex; gap:8px; }
+.btn { background:#222; border:1px solid #444; color:#aaa; padding:5px 12px; font-size:11px; cursor:pointer; letter-spacing:.08em; font-family:inherit; transition:all .15s; }
+.btn:hover { background:#333; color:#e8e2d9; border-color:#666; }
+.btn.active { background:#c8a96e; color:#111; border-color:#c8a96e; }
+
+.workspace { display:flex; flex:1; overflow:hidden; }
+.sidebar { width:220px; background:#111; border-right:1px solid #2a2a2a; display:flex; flex-direction:column; flex-shrink:0; overflow-y:auto; }
+.sidebar-section { padding:12px; border-bottom:1px solid #222; }
+.sidebar-section h2 { font-size:10px; letter-spacing:.2em; color:#555; text-transform:uppercase; margin-bottom:10px; }
+.fitem { background:#1a1a1a; border:1px solid #333; padding:8px 10px; margin-bottom:6px; cursor:grab; font-size:11px; color:#ccc; display:flex; align-items:center; gap:8px; transition:all .15s; user-select:none; }
+.fitem:hover { border-color:#c8a96e; color:#e8e2d9; }
+.fitem:active { cursor:grabbing; }
+.fcol { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+.fsz { font-size:9px; color:#555; margin-left:auto; white-space:nowrap; }
+
+.canvas-wrap { flex:1; overflow:auto; background:#242424; display:flex; align-items:flex-start; justify-content:flex-start; padding:50px; }
+#floor { position:relative; flex-shrink:0; }
+#floor svg.bg { position:absolute; top:0; left:0; overflow:visible; pointer-events:none; }
+#floor canvas { position:absolute; top:0; left:0; pointer-events:none; }
+
+.pitem { position:absolute; cursor:move; display:flex; align-items:center; justify-content:center; font-size:9px; font-family:'Courier New',monospace; text-align:center; border:1.5px solid rgba(0,0,0,.35); user-select:none; line-height:1.2; overflow:hidden; z-index:10; }
+.pitem:hover { box-shadow:0 0 0 2px #c8a96e; z-index:20; }
+.pitem.sel { box-shadow:0 0 0 2px #c8a96e, 0 0 12px rgba(200,169,110,.4); z-index:20; }
+.pitem .lbl { padding:2px; pointer-events:none; font-size:8.5px; color:rgba(0,0,0,.75); font-weight:bold; }
+.pitem .comment-indicator { position:absolute; top:-6px; left:-6px; width:14px; height:14px; background:#f0c040; color:#333; border:none; border-radius:50%; font-size:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:30; line-height:1; font-weight:bold; }
+.dbtn { position:absolute; top:-8px; right:-8px; width:16px; height:16px; background:#e05050; color:#fff; border:none; border-radius:50%; font-size:10px; cursor:pointer; display:none; align-items:center; justify-content:center; z-index:30; line-height:1; }
+.rbtn { position:absolute; bottom:-8px; right:-8px; width:16px; height:16px; background:#5090e0; color:#fff; border:none; border-radius:50%; font-size:10px; cursor:pointer; display:none; align-items:center; justify-content:center; z-index:30; line-height:1; }
+.pitem.sel .dbtn, .pitem.sel .rbtn { display:flex; }
+.info-bar { padding:8px 12px; font-size:10px; color:#555; border-top:1px solid #222; flex-shrink:0; }
+
+/* Property panel */
+.prop-panel { display:none; padding:12px; border-bottom:1px solid #222; background:#151515; }
+.prop-panel.visible { display:block; }
+.prop-panel h2 { font-size:10px; letter-spacing:.2em; color:#c8a96e; text-transform:uppercase; margin-bottom:10px; }
+.prop-row { display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:11px; }
+.prop-row label { color:#888; width:24px; text-align:right; flex-shrink:0; }
+.prop-row input[type=number] { width:60px; background:#222; border:1px solid #444; color:#ddd; padding:3px 5px; font-size:11px; font-family:inherit; }
+.prop-row span.unit { color:#555; font-size:9px; }
+.prop-row input[type=text] { flex:1; background:#222; border:1px solid #444; color:#ddd; padding:3px 5px; font-size:11px; font-family:inherit; }
+.prop-btn { background:#333; border:1px solid #555; color:#ccc; padding:4px 10px; font-size:10px; cursor:pointer; font-family:inherit; }
+.prop-btn:hover { background:#444; color:#fff; }
+
+/* Custom module form */
+.custom-form { padding:12px; border-bottom:1px solid #222; }
+.custom-form h2 { font-size:10px; letter-spacing:.2em; color:#555; text-transform:uppercase; margin-bottom:10px; }
+.custom-row { display:flex; align-items:center; gap:4px; margin-bottom:6px; font-size:11px; }
+.custom-row label { color:#888; font-size:10px; flex-shrink:0; }
+.custom-row input { background:#222; border:1px solid #444; color:#ddd; padding:3px 5px; font-size:11px; font-family:inherit; }
+.custom-row input[type=number] { width:50px; }
+.custom-row input[type=text] { flex:1; min-width:0; }
+.custom-row input[type=color] { width:28px; height:22px; padding:1px; border:1px solid #444; background:#222; cursor:pointer; }
+.custom-add-btn { width:100%; background:#2a3a2a; border:1px solid #4a6a4a; color:#8c8; padding:5px; font-size:11px; cursor:pointer; font-family:inherit; margin-top:4px; }
+.custom-add-btn:hover { background:#3a4a3a; color:#afa; }
+
+/* Comment tooltip */
+.comment-tooltip { position:absolute; background:#2a2a1a; border:1px solid #c8a96e; color:#e8e2d9; padding:6px 8px; font-size:10px; max-width:180px; z-index:100; pointer-events:none; white-space:pre-wrap; word-wrap:break-word; border-radius:3px; }
+
+/* Save/Load panel */
+.save-section { padding:12px; border-bottom:1px solid #222; }
+.save-section h2 { font-size:10px; letter-spacing:.2em; color:#555; text-transform:uppercase; margin-bottom:10px; }
+.save-row { display:flex; gap:4px; margin-bottom:6px; }
+.save-row input[type=text] { flex:1; min-width:0; background:#222; border:1px solid #444; color:#ddd; padding:3px 5px; font-size:11px; font-family:inherit; }
+.save-row select { flex:1; min-width:0; background:#222; border:1px solid #444; color:#ddd; padding:3px 5px; font-size:11px; font-family:inherit; }
+.save-btn { background:#2a2a3a; border:1px solid #4a4a6a; color:#aac; padding:5px 10px; font-size:10px; cursor:pointer; font-family:inherit; white-space:nowrap; }
+.save-btn:hover { background:#3a3a4a; color:#ccf; }
+.save-btn.del { background:#3a2a2a; border-color:#6a4a4a; color:#caa; }
+.save-btn.del:hover { background:#4a3a3a; color:#fcc; }
+.save-status { font-size:9px; color:#666; margin-top:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Floor Layout</h1>
+  <span>改修後平面図 — 内寸 9,000 × 8,039mm / 底辺は左→右に右下がり斜め</span>
+  <div class="controls">
+    <button class="btn active" id="btnGrid">グリッド ON</button>
+    <button class="btn active" id="btnSnap">スナップ ON</button>
+    <button class="btn" id="btnClear">全削除</button>
+  </div>
+</header>
+<div class="workspace">
+  <div class="sidebar">
+    <!-- Property panel for selected item -->
+    <div class="prop-panel" id="propPanel">
+      <h2>選択中の什器</h2>
+      <div style="font-size:11px;color:#ccc;margin-bottom:8px;" id="propName"></div>
+      <div class="prop-row">
+        <label>W</label>
+        <input type="number" id="propW" min="100" step="50">
+        <span class="unit">mm</span>
+        <label>H</label>
+        <input type="number" id="propH" min="100" step="50">
+        <span class="unit">mm</span>
+      </div>
+      <div class="prop-row">
+        <label>角</label>
+        <input type="number" id="propRot" min="0" max="359" step="1">
+        <span class="unit">°</span>
+        <button class="prop-btn" id="propRot90">+90°</button>
+      </div>
+      <div class="prop-row">
+        <label style="width:auto">メモ</label>
+        <input type="text" id="propComment" placeholder="コメントを入力...">
+      </div>
+      <div class="prop-row">
+        <button class="prop-btn" id="propApply">サイズ適用</button>
+        <button class="prop-btn" id="propCommentApply">メモ保存</button>
+      </div>
+    </div>
+
+    <!-- Save / Load -->
+    <div class="save-section">
+      <h2>保存 / 読込</h2>
+      <div class="save-row">
+        <input type="text" id="saveName" placeholder="レイアウト名">
+        <button class="save-btn" id="btnSave">保存</button>
+      </div>
+      <div class="save-row">
+        <select id="loadSelect"><option value="">-- 読込 --</option></select>
+        <button class="save-btn" id="btnLoad">読込</button>
+        <button class="save-btn del" id="btnDel">削除</button>
+      </div>
+      <div class="save-status" id="saveStatus"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h2>レジ・カウンター</h2>
+      <div class="fitem" draggable="true" data-w="1800" data-h="600" data-label="レジカウンター" data-color="#d4a96a"><div class="fcol" style="background:#d4a96a"></div>レジカウンター<span class="fsz">1800×600</span></div>
+      <div class="fitem" draggable="true" data-w="1200" data-h="500" data-label="受付カウンター" data-color="#d4a96a"><div class="fcol" style="background:#d4a96a"></div>受付カウンター<span class="fsz">1200×500</span></div>
+    </div>
+    <div class="sidebar-section">
+      <h2>冷蔵・冷凍什器</h2>
+      <div class="fitem" draggable="true" data-w="1200" data-h="700" data-label="冷蔵ショーケース" data-color="#7ab8d4"><div class="fcol" style="background:#7ab8d4"></div>冷蔵ショーケース<span class="fsz">1200×700</span></div>
+      <div class="fitem" draggable="true" data-w="900" data-h="700" data-label="冷凍ストッカー" data-color="#5a9abf"><div class="fcol" style="background:#5a9abf"></div>冷凍ストッカー<span class="fsz">900×700</span></div>
+      <div class="fitem" draggable="true" data-w="600" data-h="600" data-label="冷蔵庫" data-color="#7ab8d4"><div class="fcol" style="background:#7ab8d4"></div>冷蔵庫<span class="fsz">600×600</span></div>
+    </div>
+    <div class="sidebar-section">
+      <h2>陳列棚</h2>
+      <div class="fitem" draggable="true" data-w="1800" data-h="400" data-label="ゴンドラ棚" data-color="#9ab87a"><div class="fcol" style="background:#9ab87a"></div>ゴンドラ棚<span class="fsz">1800×400</span></div>
+      <div class="fitem" draggable="true" data-w="900" data-h="400" data-label="棚（短）" data-color="#9ab87a"><div class="fcol" style="background:#9ab87a"></div>棚（短）<span class="fsz">900×400</span></div>
+      <div class="fitem" draggable="true" data-w="600" data-h="400" data-label="エンド棚" data-color="#b8c87a"><div class="fcol" style="background:#b8c87a"></div>エンド棚<span class="fsz">600×400</span></div>
+    </div>
+    <div class="sidebar-section">
+      <h2>テーブル・椅子</h2>
+      <div class="fitem" draggable="true" data-w="800" data-h="800" data-label="テーブル" data-color="#c8a0d4"><div class="fcol" style="background:#c8a0d4"></div>テーブル<span class="fsz">800×800</span></div>
+      <div class="fitem" draggable="true" data-w="450" data-h="450" data-label="椅子" data-color="#d4b0e0"><div class="fcol" style="background:#d4b0e0"></div>椅子<span class="fsz">450×450</span></div>
+    </div>
+    <div class="sidebar-section">
+      <h2>その他</h2>
+      <div class="fitem" draggable="true" data-w="600" data-h="600" data-label="作業台" data-color="#d4c87a"><div class="fcol" style="background:#d4c87a"></div>作業台<span class="fsz">600×600</span></div>
+      <div class="fitem" draggable="true" data-w="500" data-h="500" data-label="POPスタンド" data-color="#e07a7a"><div class="fcol" style="background:#e07a7a"></div>POPスタンド<span class="fsz">500×500</span></div>
+    </div>
+
+    <!-- Custom module form -->
+    <div class="custom-form">
+      <h2>カスタム什器追加</h2>
+      <div class="custom-row">
+        <label>名前</label>
+        <input type="text" id="customLabel" value="カスタム什器">
+      </div>
+      <div class="custom-row">
+        <label>W</label>
+        <input type="number" id="customW" value="600" min="100" step="50">
+        <label>H</label>
+        <input type="number" id="customH" value="600" min="100" step="50">
+        <span class="unit">mm</span>
+      </div>
+      <div class="custom-row">
+        <label>色</label>
+        <input type="color" id="customColor" value="#a0a0a0">
+      </div>
+      <button class="custom-add-btn" id="btnCustomAdd">＋ カスタム什器を配置</button>
+    </div>
+  </div>
+  <div class="canvas-wrap">
+    <div id="floor">
+      <svg class="bg" id="svg"></svg>
+      <canvas id="grid"></canvas>
+    </div>
+  </div>
+</div>
+<div class="info-bar" id="info">什器をサイドバーからドラッグして配置 / クリックで選択 / プロパティパネルでサイズ変更・回転・コメント付与</div>
+
+<script>
+// ================================================================
+// SCALE & CONSTANTS
+// ================================================================
+const S  = 0.082;          // 1mm = 0.082px
+const WT = 375;            // wall thickness mm
+const WP = WT * S;         // wall thickness px ≈ 30.75
+
+// ----------------------------------------------------------------
+// Inner polygon (mm, clockwise from inner TL)
+// KEY: The "bottom" wall is ONE diagonal line from V5(0,5734) to V4(6200,8039).
+// There is NO horizontal bottom segment — the diagonal IS the bottom wall.
+//
+//  V0(0,0)──────────────────────V1(9000,0)
+//  │                                     │
+//  │                                     │ 5000
+//  │                            V2(9000,5000)
+//  │                       V3(6200,5000)─┘
+//  │                            │ 3039
+//  V5(0,5734)                V4(6200,8039)
+//   ╲____________diagonal___________╱
+//   ← right-downward slope (右下がり) →
+// ----------------------------------------------------------------
+const innerMM = [
+  [0,    0],       // V0: TL
+  [9000, 0],       // V1: TR
+  [9000, 5000],    // V2: R-step top
+  [6200, 5000],    // V3: L corner (step)
+  [6200, 8039],    // V4: step bottom-right
+  [0,    5734],    // V5: diagonal meets left wall (3000+1200+800+734=5734)
+];
+
+// Convert inner mm → canvas px
+// Origin (0,0) on canvas = outer TL of building
+function mmPx(p) { return [p[0] * S + WP, p[1] * S + WP]; }
+const iPx = innerMM.map(mmPx);
+
+// ----------------------------------------------------------------
+// Compute outer polygon by expanding each edge outward by WP.
+// For a clockwise polygon in screen-coords (y↓):
+//   exterior normal of edge (P→Q) = right-normal of direction = normalize(Qy-Py, -(Qx-Px))
+// ----------------------------------------------------------------
+function lineIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+  const denom = (ax-bx)*(cy-dy) - (ay-by)*(cx-dx);
+  if (Math.abs(denom) < 1e-9) return [(ax+cx)/2, (ay+cy)/2];
+  const t = ((ax-cx)*(cy-dy) - (ay-cy)*(cx-dx)) / denom;
+  return [ax + t*(bx-ax), ay + t*(by-ay)];
+}
+
+function computeOuterPoly(poly, d) {
+  const n = poly.length;
+  const offEdges = poly.map((p, i) => {
+    const q = poly[(i+1)%n];
+    const dx = q[0]-p[0], dy = q[1]-p[1];
+    const len = Math.hypot(dx, dy);
+    const nx = dy/len * d, ny = -dx/len * d;
+    return [p[0]+nx, p[1]+ny, q[0]+nx, q[1]+ny];
+  });
+  return offEdges.map((e, i) => {
+    const f = offEdges[(i+1)%n];
+    return lineIntersect(e[0],e[1],e[2],e[3], f[0],f[1],f[2],f[3]);
+  });
+}
+
+const oPx = computeOuterPoly(iPx, WP);
+
+// Canvas size (outer bounding box, with 2px padding)
+const CW = Math.ceil(Math.max(...oPx.map(p=>p[0]))) + 2;
+const CH = Math.ceil(Math.max(...oPx.map(p=>p[1]))) + 2;
+
+// ----------------------------------------------------------------
+// Key derived px coordinates
+// ----------------------------------------------------------------
+// Wall block (inaccessible): 2000mm wide × 3000mm tall from inner TL
+const blkX = WP, blkY = WP;
+const blkW = 2000*S, blkH = 3000*S;
+
+// Entrance on diagonal wall (x_inner=3800..6200, y on diagonal)
+// Diagonal: from V5(0,5734) to V4(6200,8039)
+// Entrance centered on diagonal: x center=3100, width=2000mm → x=2100..4100
+function diagY(xMM) { return 5734 + (8039-5734) * xMM/6200; }
+const entA = mmPx([2100, diagY(2100)]);  // door start (center - 1000)
+const entB = mmPx([4100, diagY(4100)]);  // door end   (center + 1000)
+
+// Outward normal of diagonal wall (away from room, toward exterior):
+const diagLen = Math.hypot(6200, 2305);
+const diagOutx = -2305/diagLen;   // outward unit x (mm scale)
+const diagOuty =  6200/diagLen;   // outward unit y (mm scale)
+
+// Wall-tangent direction along diagonal (V5→V4 direction)
+const diagTx = 6200/diagLen;      // tangent unit x
+const diagTy = 2305/diagLen;      // tangent unit y
+
+// Entrance: asymmetric double doors (larger left ~1400mm, smaller right ~1000mm along diagonal)
+const entDiagLen = Math.hypot(entB[0]-entA[0], entB[1]-entA[1]);
+const halfEnt = entDiagLen / 2;   // half of entrance in px
+
+// ================================================================
+// BUILD SVG
+// ================================================================
+function pts(arr) { return arr.map(p=>p[0].toFixed(2)+','+p[1].toFixed(2)).join(' '); }
+
+const svgEl = document.getElementById('svg');
+svgEl.setAttribute('width', CW);
+svgEl.setAttribute('height', CH);
+svgEl.setAttribute('viewBox', `0 0 ${CW} ${CH}`);
+
+// Midpoint of entrance
+const entMx = (entA[0]+entB[0])/2;
+const entMy = (entA[1]+entB[1])/2;
+
+// Door leaf A: hinged at entA, leaf extends along wall toward entB (closed), swings outward (open)
+// Closed tip: midpoint of entrance (entA + halfEnt along wall)
+// Open tip: entA + halfEnt outward (perpendicular)
+const leafA_closed_x = entMx;
+const leafA_closed_y = entMy;
+const leafA_open_x = entA[0] + diagOutx * halfEnt;
+const leafA_open_y = entA[1] + diagOuty * halfEnt;
+
+// Door leaf B: hinged at entB, leaf extends along wall toward entA (closed), swings outward (open)
+const leafB_closed_x = entMx;
+const leafB_closed_y = entMy;
+const leafB_open_x = entB[0] + diagOutx * halfEnt;
+const leafB_open_y = entB[1] + diagOuty * halfEnt;
+
+svgEl.innerHTML = `
+<defs>
+  <clipPath id="outer"><polygon points="${pts(oPx)}"/></clipPath>
+  <clipPath id="inner"><polygon points="${pts(iPx)}"/></clipPath>
+  <pattern id="hatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+    <line x1="0" y1="0" x2="0" y2="8" stroke="#666" stroke-width="1.5"/>
+  </pattern>
+</defs>
+
+<!-- Background -->
+<rect width="${CW}" height="${CH}" fill="#2a2a2a"/>
+
+<!-- Outer building fill (wall mass) -->
+<polygon points="${pts(oPx)}" fill="#b8b0a0"/>
+
+<!-- Inner floor fill -->
+<polygon points="${pts(iPx)}" fill="#f0ebe0"/>
+
+<!-- Inaccessible wall block (top-left) -->
+<rect x="${blkX}" y="${blkY}" width="${blkW}" height="${blkH}" fill="#9e9282"/>
+<rect x="${blkX}" y="${blkY}" width="${blkW}" height="${blkH}" fill="url(#hatch)" opacity="0.45"/>
+<rect x="${blkX}" y="${blkY}" width="${blkW}" height="${blkH}" fill="none" stroke="#777" stroke-width="1.5"/>
+<text x="${blkX+blkW/2}" y="${blkY+blkH/2-5}"  font-size="10" fill="#666" text-anchor="middle" font-family="Courier New">壁</text>
+<text x="${blkX+blkW/2}" y="${blkY+blkH/2+9}"  font-size="9"  fill="#666" text-anchor="middle" font-family="Courier New">（使用不可）</text>
+
+<!-- Outer wall stroke -->
+<polygon points="${pts(oPx)}" fill="none" stroke="#1e1e1e" stroke-width="2"/>
+
+<!-- Inner floor boundary (dashed) -->
+<polygon points="${pts(iPx)}" fill="none" stroke="#999" stroke-width="1.2" stroke-dasharray="5,3"/>
+
+<!-- Entrance on diagonal wall -->
+<!-- Erase wall between entA and entB -->
+<line x1="${entA[0]}" y1="${entA[1]}" x2="${entB[0]}" y2="${entB[1]}"
+      stroke="#f0ebe0" stroke-width="${WP*1.8}"/>
+<!-- Door leaf A: hinged at entA, quarter-circle from closed (along wall to mid) to open (outward) -->
+<line x1="${entA[0]}" y1="${entA[1]}"
+      x2="${leafA_open_x}" y2="${leafA_open_y}"
+      stroke="#888" stroke-width="1" opacity=".7"/>
+<path d="M ${leafA_closed_x} ${leafA_closed_y}
+         A ${halfEnt} ${halfEnt} 0 0 1
+           ${leafA_open_x} ${leafA_open_y}"
+      fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2" opacity=".7"/>
+<!-- Door leaf B: hinged at entB, quarter-circle from closed (along wall to mid) to open (outward) -->
+<line x1="${entB[0]}" y1="${entB[1]}"
+      x2="${leafB_open_x}" y2="${leafB_open_y}"
+      stroke="#888" stroke-width="1" opacity=".7"/>
+<path d="M ${leafB_closed_x} ${leafB_closed_y}
+         A ${halfEnt} ${halfEnt} 0 0 0
+           ${leafB_open_x} ${leafB_open_y}"
+      fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3,2" opacity=".7"/>
+
+<!-- Entrance label (rotated to match wall angle) -->
+<text
+  x="${entMx + diagOutx*40}"
+  y="${entMy + diagOuty*40}"
+  font-size="11" fill="#c8a96e" text-anchor="middle" font-family="Courier New"
+  transform="rotate(${Math.atan2(iPx[4][1]-iPx[5][1], iPx[4][0]-iPx[5][0])*180/Math.PI},
+    ${entMx + diagOutx*40},${entMy + diagOuty*40})">▷ 入口</text>
+
+<!-- ===== DIMENSION LINES ===== -->
+<!-- Top 9,000mm inner -->
+<line x1="${iPx[0][0]}" y1="-22" x2="${iPx[1][0]}" y2="-22" stroke="#c8a96e" stroke-width=".6"/>
+<line x1="${iPx[0][0]}" y1="-26" x2="${iPx[0][0]}" y2="-18" stroke="#c8a96e" stroke-width=".6"/>
+<line x1="${iPx[1][0]}" y1="-26" x2="${iPx[1][0]}" y2="-18" stroke="#c8a96e" stroke-width=".6"/>
+<text x="${(iPx[0][0]+iPx[1][0])/2}" y="-26" font-size="9" fill="#c8a96e" text-anchor="middle" font-family="Courier New">9,000</text>
+
+<!-- Left wall height: 5,734mm inner -->
+<line x1="-22" y1="${iPx[0][1]}" x2="-22" y2="${iPx[5][1]}" stroke="#c8a96e" stroke-width=".6"/>
+<line x1="-26" y1="${iPx[0][1]}" x2="-18" y2="${iPx[0][1]}" stroke="#c8a96e" stroke-width=".6"/>
+<line x1="-26" y1="${iPx[5][1]}" x2="-18" y2="${iPx[5][1]}" stroke="#c8a96e" stroke-width=".6"/>
+<text x="-28" y="${(iPx[0][1]+iPx[5][1])/2}" font-size="8" fill="#c8a96e" text-anchor="middle" transform="rotate(-90,-28,${(iPx[0][1]+iPx[5][1])/2})" font-family="Courier New">5,734</text>
+
+<!-- Right wall height: 5,000mm -->
+<line x1="${iPx[1][0]+16}" y1="${iPx[1][1]}" x2="${iPx[1][0]+16}" y2="${iPx[2][1]}" stroke="#c8a96e" stroke-width=".6"/>
+<line x1="${iPx[1][0]+12}" y1="${iPx[1][1]}" x2="${iPx[1][0]+20}" y2="${iPx[1][1]}" stroke="#c8a96e" stroke-width=".6"/>
+<line x1="${iPx[1][0]+12}" y1="${iPx[2][1]}" x2="${iPx[1][0]+20}" y2="${iPx[2][1]}" stroke="#c8a96e" stroke-width=".6"/>
+<text x="${iPx[1][0]+28}" y="${(iPx[1][1]+iPx[2][1])/2}" font-size="8" fill="#c8a96e" text-anchor="middle" transform="rotate(90,${iPx[1][0]+28},${(iPx[1][1]+iPx[2][1])/2})" font-family="Courier New">5,000</text>
+
+<!-- Step depth: 3,039mm -->
+<line x1="${iPx[3][0]+16}" y1="${iPx[3][1]}" x2="${iPx[3][0]+16}" y2="${iPx[4][1]}" stroke="#c8a96e" stroke-width=".6"/>
+<line x1="${iPx[3][0]+12}" y1="${iPx[3][1]}" x2="${iPx[3][0]+20}" y2="${iPx[3][1]}" stroke="#c8a96e" stroke-width=".6"/>
+<line x1="${iPx[3][0]+12}" y1="${iPx[4][1]}" x2="${iPx[3][0]+20}" y2="${iPx[4][1]}" stroke="#c8a96e" stroke-width=".6"/>
+<text x="${iPx[3][0]+28}" y="${(iPx[3][1]+iPx[4][1])/2}" font-size="8" fill="#c8a96e" text-anchor="middle" transform="rotate(90,${iPx[3][0]+28},${(iPx[3][1]+iPx[4][1])/2})" font-family="Courier New">3,039</text>
+
+<!-- Step width: 2,800mm (from V3/V4 x=6200 to V2 x=9000) -->
+<line x1="${iPx[3][0]}" y1="${iPx[3][1]-16}" x2="${iPx[2][0]}" y2="${iPx[3][1]-16}" stroke="#c8a96e" stroke-width=".6"/>
+<line x1="${iPx[3][0]}" y1="${iPx[3][1]-20}" x2="${iPx[3][0]}" y2="${iPx[3][1]-12}" stroke="#c8a96e" stroke-width=".6"/>
+<line x1="${iPx[2][0]}" y1="${iPx[3][1]-20}" x2="${iPx[2][0]}" y2="${iPx[3][1]-12}" stroke="#c8a96e" stroke-width=".6"/>
+<text x="${(iPx[3][0]+iPx[2][0])/2}" y="${iPx[3][1]-20}" font-size="8" fill="#c8a96e" text-anchor="middle" font-family="Courier New">2,800</text>
+
+<!-- Diagonal label -->
+<text x="${(iPx[4][0]+iPx[5][0])/2 + 20}" y="${(iPx[4][1]+iPx[5][1])/2 + 12}"
+      font-size="9" fill="#c8a96e" text-anchor="middle" font-family="Courier New"
+      transform="rotate(${Math.atan2(iPx[4][1]-iPx[5][1],iPx[4][0]-iPx[5][0])*180/Math.PI},
+        ${(iPx[4][0]+iPx[5][0])/2+20},${(iPx[4][1]+iPx[5][1])/2+12})">斜め底壁（右下がり）</text>
+
+<!-- Wall block dimensions -->
+<line x1="${blkX}" y1="${blkY+blkH+10}" x2="${blkX+blkW}" y2="${blkY+blkH+10}" stroke="#888" stroke-width=".4"/>
+<text x="${blkX+blkW/2}" y="${blkY+blkH+21}" font-size="7.5" fill="#777" text-anchor="middle" font-family="Courier New">2,000</text>
+<line x1="${blkX+blkW+10}" y1="${blkY}" x2="${blkX+blkW+10}" y2="${blkY+blkH}" stroke="#888" stroke-width=".4"/>
+<text x="${blkX+blkW+21}" y="${blkY+blkH/2}" font-size="7.5" fill="#777" text-anchor="middle" transform="rotate(90,${blkX+blkW+21},${blkY+blkH/2})" font-family="Courier New">3,000</text>
+`;
+
+// ================================================================
+// GRID CANVAS
+// ================================================================
+const gridEl = document.getElementById('grid');
+gridEl.width  = CW;
+gridEl.height = CH;
+let gridOn = true, snapOn = true;
+const GRID = Math.round(500 * S); // 500mm grid in px
+
+function drawGrid() {
+  const ctx = gridEl.getContext('2d');
+  ctx.clearRect(0, 0, CW, CH);
+  if (!gridOn) return;
+
+  ctx.save();
+  ctx.beginPath();
+  iPx.forEach((p,i) => i===0 ? ctx.moveTo(p[0],p[1]) : ctx.lineTo(p[0],p[1]));
+  ctx.closePath();
+  ctx.clip();
+
+  ctx.strokeStyle = 'rgba(160,140,110,.18)';
+  ctx.lineWidth = 0.4;
+  for (let x=WP; x<=CW; x+=GRID) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,CH); ctx.stroke(); }
+  for (let y=WP; y<=CH; y+=GRID) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(CW,y); ctx.stroke(); }
+
+  const G2 = Math.round(1000 * S);
+  ctx.strokeStyle = 'rgba(190,165,120,.28)';
+  ctx.lineWidth = 0.7;
+  for (let x=WP; x<=CW; x+=G2) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,CH); ctx.stroke(); }
+  for (let y=WP; y<=CH; y+=G2) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(CW,y); ctx.stroke(); }
+  ctx.restore();
+}
+drawGrid();
+
+// Set floor div size
+const floorDiv = document.getElementById('floor');
+floorDiv.style.width  = CW+'px';
+floorDiv.style.height = CH+'px';
+floorDiv.style.position = 'relative';
+
+// ================================================================
+// SNAP helper — snaps center, leading edge, or trailing edge
+// to the nearest grid line, whichever is closest.
+// ================================================================
+function snapPx(v) {
+  const inner = v - WP;
+  return Math.round(inner / GRID) * GRID + WP;
+}
+
+// Snap an axis position considering center AND both edges to grid,
+// PLUS module-to-module edge snapping for edge-to-edge placement.
+function snapAxis(raw, size, excludeEl) {
+  const SNAP_THRESH = GRID * 0.6; // snap distance threshold
+  const center   = raw + size / 2;
+  const leading  = raw;
+  const trailing = raw + size;
+
+  // Grid snap candidates
+  const byCenter   = snapPx(center) - size / 2;
+  const byLeading  = snapPx(leading);
+  const byTrailing = snapPx(trailing) - size;
+
+  const opts = [
+    { pos: byCenter,   d: Math.abs(byCenter - raw) },
+    { pos: byLeading,  d: Math.abs(byLeading - raw) },
+    { pos: byTrailing, d: Math.abs(byTrailing - raw) },
+  ];
+
+  // Module-to-module edge snapping: check all placed modules
+  document.querySelectorAll('.pitem').forEach(other => {
+    if (other === excludeEl) return;
+    const oLeft = parseFloat(other.style.left);
+    const oTop  = parseFloat(other.style.top);
+    const oW    = parseFloat(other.style.width);
+    const oH    = parseFloat(other.style.height);
+    // Other module edges (use same axis — caller determines x vs y)
+    // We check both x and y edges; caller passes the right dimension
+    const oEdges = [oLeft, oLeft + oW, oTop, oTop + oH];
+    // For the current axis, try snapping our leading/trailing to their edges
+    oEdges.forEach(edge => {
+      // Our leading edge → other edge
+      const dLead = Math.abs(leading - edge);
+      if (dLead < SNAP_THRESH) opts.push({ pos: edge, d: dLead * 0.5 }); // prefer module snap (lower weight)
+      // Our trailing edge → other edge
+      const dTrail = Math.abs(trailing - edge);
+      if (dTrail < SNAP_THRESH) opts.push({ pos: edge - size, d: dTrail * 0.5 });
+      // Our center → other edge
+      const dCent = Math.abs(center - edge);
+      if (dCent < SNAP_THRESH) opts.push({ pos: edge - size / 2, d: dCent * 0.5 });
+    });
+  });
+
+  opts.sort((a, b) => a.d - b.d);
+  return opts[0].pos;
+}
+
+// ================================================================
+// DRAG FROM SIDEBAR
+// ================================================================
+let dragData = null;
+document.querySelectorAll('.fitem').forEach(el => {
+  el.addEventListener('dragstart', e => {
+    dragData = {
+      wpx: parseFloat(el.dataset.w)*S, hpx: parseFloat(el.dataset.h)*S,
+      wmm: el.dataset.w, hmm: el.dataset.h,
+      label: el.dataset.label, color: el.dataset.color
+    };
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+});
+
+floorDiv.addEventListener('dragover', e => e.preventDefault());
+floorDiv.addEventListener('drop', e => {
+  e.preventDefault();
+  if (!dragData) return;
+  const r = floorDiv.getBoundingClientRect();
+  let x = e.clientX - r.left - dragData.wpx/2;
+  let y = e.clientY - r.top  - dragData.hpx/2;
+  if (snapOn) { x = snapAxis(x, dragData.wpx); y = snapAxis(y, dragData.hpx); }
+  place(x, y, dragData.wpx, dragData.hpx, dragData.label, dragData.color, 0, dragData.wmm, dragData.hmm);
+  dragData = null;
+});
+
+// ================================================================
+// PLACE & MANAGE FURNITURE
+// ================================================================
+let sel = null;
+let commentTooltip = null;
+
+function place(x, y, pw, ph, label, color, rot, wmm, hmm, comment) {
+  const el = document.createElement('div');
+  el.className = 'pitem';
+  el.style.cssText = `left:${x}px;top:${y}px;width:${pw}px;height:${ph}px;background:${color};transform:rotate(${rot}deg)`;
+  el.dataset.rot = rot;
+  el.dataset.label = label;
+  el.dataset.wmm = wmm;
+  el.dataset.hmm = hmm;
+  el.dataset.color = color;
+  el.dataset.comment = comment || '';
+
+  const lbl = document.createElement('div'); lbl.className='lbl'; lbl.textContent=label; el.appendChild(lbl);
+
+  const dbtn = document.createElement('button'); dbtn.className='dbtn'; dbtn.textContent='×';
+  dbtn.addEventListener('click', e => { e.stopPropagation(); el.remove(); sel=null; updatePropPanel(); info('削除しました'); });
+  el.appendChild(dbtn);
+
+  const rbtn = document.createElement('button'); rbtn.className='rbtn'; rbtn.textContent='↻';
+  rbtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const r=(parseInt(el.dataset.rot)+90)%360;
+    el.dataset.rot=r; el.style.transform=`rotate(${r}deg)`;
+    updatePropPanel();
+  });
+  el.appendChild(rbtn);
+
+  // Comment indicator
+  if (comment) addCommentIndicator(el);
+
+  el.addEventListener('mousedown', e => {
+    if (e.target.className==='dbtn'||e.target.className==='rbtn'||e.target.className==='comment-indicator') return;
+    selItem(el); drag(e,el);
+  });
+
+  floorDiv.appendChild(el);
+  selItem(el);
+  info(`配置: ${label} (${wmm}×${hmm}mm)`);
+}
+
+function addCommentIndicator(el) {
+  let ci = el.querySelector('.comment-indicator');
+  if (!el.dataset.comment) {
+    if (ci) ci.remove();
+    return;
+  }
+  if (!ci) {
+    ci = document.createElement('div');
+    ci.className = 'comment-indicator';
+    ci.textContent = '💬';
+    ci.style.fontSize = '10px';
+    ci.addEventListener('mouseenter', e => {
+      e.stopPropagation();
+      showCommentTooltip(el, e);
+    });
+    ci.addEventListener('mouseleave', e => {
+      hideCommentTooltip();
+    });
+    ci.addEventListener('click', e => { e.stopPropagation(); });
+    el.appendChild(ci);
+  }
+}
+
+function showCommentTooltip(el, e) {
+  hideCommentTooltip();
+  if (!el.dataset.comment) return;
+  const tt = document.createElement('div');
+  tt.className = 'comment-tooltip';
+  tt.textContent = el.dataset.comment;
+  const rect = el.getBoundingClientRect();
+  const floorRect = floorDiv.getBoundingClientRect();
+  tt.style.left = (rect.left - floorRect.left) + 'px';
+  tt.style.top = (rect.top - floorRect.top - 30) + 'px';
+  floorDiv.appendChild(tt);
+  commentTooltip = tt;
+}
+
+function hideCommentTooltip() {
+  if (commentTooltip) { commentTooltip.remove(); commentTooltip = null; }
+}
+
+function selItem(el) {
+  if (sel) sel.classList.remove('sel');
+  sel = el;
+  if (el) el.classList.add('sel');
+  updatePropPanel();
+}
+
+function updatePropPanel() {
+  const panel = document.getElementById('propPanel');
+  if (!sel) { panel.classList.remove('visible'); return; }
+  panel.classList.add('visible');
+  document.getElementById('propName').textContent = sel.dataset.label;
+  document.getElementById('propW').value = sel.dataset.wmm;
+  document.getElementById('propH').value = sel.dataset.hmm;
+  document.getElementById('propRot').value = sel.dataset.rot;
+  document.getElementById('propComment').value = sel.dataset.comment || '';
+}
+
+floorDiv.addEventListener('mousedown', e => {
+  if (e.target===floorDiv || e.target.tagName==='canvas') selItem(null);
+});
+
+function drag(e, el) {
+  e.preventDefault();
+  const sx=e.clientX, sy=e.clientY;
+  const ox=parseInt(el.style.left), oy=parseInt(el.style.top);
+  const mv = ev => {
+    let nx=ox+ev.clientX-sx, ny=oy+ev.clientY-sy;
+    if (snapOn) {
+      nx = snapAxis(nx, parseFloat(el.style.width), el);
+      ny = snapAxis(ny, parseFloat(el.style.height), el);
+    }
+    el.style.left=nx+'px'; el.style.top=ny+'px';
+    const xmm = Math.round((nx - WP) / S);
+    const ymm = Math.round((ny - WP) / S);
+    info(`${el.dataset.label} — X:${xmm}mm / Y:${ymm}mm`);
+  };
+  const up = () => { document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); };
+  document.addEventListener('mousemove',mv);
+  document.addEventListener('mouseup',up);
+}
+
+// ================================================================
+// PROPERTY PANEL EVENTS
+// ================================================================
+document.getElementById('propApply').addEventListener('click', () => {
+  if (!sel) return;
+  const w = parseInt(document.getElementById('propW').value);
+  const h = parseInt(document.getElementById('propH').value);
+  const rot = parseInt(document.getElementById('propRot').value) || 0;
+  if (w < 50 || h < 50) return;
+  sel.dataset.wmm = w;
+  sel.dataset.hmm = h;
+  sel.dataset.rot = rot;
+  sel.style.width = (w * S) + 'px';
+  sel.style.height = (h * S) + 'px';
+  sel.style.transform = `rotate(${rot}deg)`;
+  info(`サイズ変更: ${sel.dataset.label} → ${w}×${h}mm / ${rot}°`);
+});
+
+document.getElementById('propRot90').addEventListener('click', () => {
+  if (!sel) return;
+  const r = (parseInt(sel.dataset.rot) + 90) % 360;
+  sel.dataset.rot = r;
+  sel.style.transform = `rotate(${r}deg)`;
+  document.getElementById('propRot').value = r;
+  info(`回転: ${sel.dataset.label} → ${r}°`);
+});
+
+document.getElementById('propCommentApply').addEventListener('click', () => {
+  if (!sel) return;
+  const comment = document.getElementById('propComment').value.trim();
+  sel.dataset.comment = comment;
+  addCommentIndicator(sel);
+  info(comment ? `メモ保存: "${comment}"` : 'メモを削除しました');
+});
+
+// Enter key in comment field
+document.getElementById('propComment').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('propCommentApply').click();
+});
+
+// Enter key in size/rot fields
+['propW','propH','propRot'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('propApply').click();
+  });
+});
+
+// ================================================================
+// CUSTOM MODULE
+// ================================================================
+document.getElementById('btnCustomAdd').addEventListener('click', () => {
+  const label = document.getElementById('customLabel').value.trim() || 'カスタム';
+  const w = parseInt(document.getElementById('customW').value) || 600;
+  const h = parseInt(document.getElementById('customH').value) || 600;
+  const color = document.getElementById('customColor').value;
+  // Place at center of visible area
+  const wrap = document.querySelector('.canvas-wrap');
+  const r = floorDiv.getBoundingClientRect();
+  let cx = wrap.scrollLeft + wrap.clientWidth/2 - r.left + wrap.getBoundingClientRect().left;
+  let cy = wrap.scrollTop + wrap.clientHeight/2 - r.top + wrap.getBoundingClientRect().top;
+  cx -= (w*S)/2;
+  cy -= (h*S)/2;
+  if (snapOn) {
+    cx = snapAxis(cx, w*S);
+    cy = snapAxis(cy, h*S);
+  }
+  place(cx, cy, w*S, h*S, label, color, 0, w, h);
+});
+
+// ================================================================
+// CONTROLS
+// ================================================================
+document.getElementById('btnGrid').addEventListener('click', function(){
+  gridOn=!gridOn; this.textContent=gridOn?'グリッド ON':'グリッド OFF'; this.classList.toggle('active',gridOn); drawGrid();
+});
+document.getElementById('btnSnap').addEventListener('click', function(){
+  snapOn=!snapOn; this.textContent=snapOn?'スナップ ON':'スナップ OFF'; this.classList.toggle('active',snapOn);
+});
+document.getElementById('btnClear').addEventListener('click',()=>{
+  document.querySelectorAll('.pitem').forEach(e=>e.remove()); sel=null; updatePropPanel(); info('全削除しました');
+});
+function info(m) { document.getElementById('info').textContent=m; }
+
+// ================================================================
+// SUPABASE PERSISTENCE
+// ================================================================
+const SUPABASE_URL  = 'https://ftesdzemoysatyguuwwc.supabase.co';
+const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ0ZXNkemVtb3lzYXR5Z3V1d3djIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0MjY0NjgsImV4cCI6MjA5MDAwMjQ2OH0.oWPCivpuu69YX0FqO9Hpp159LkwWTbXrFR3iSKFMMBE';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const saveStatus = document.getElementById('saveStatus');
+const loadSelect = document.getElementById('loadSelect');
+
+function sStatus(msg, err) {
+  saveStatus.textContent = msg;
+  saveStatus.style.color = err ? '#e07a7a' : '#8c8';
+  setTimeout(() => { saveStatus.textContent = ''; }, 3000);
+}
+
+// Serialize all placed items to JSON array
+function serializeItems() {
+  return Array.from(document.querySelectorAll('.pitem')).map(el => ({
+    x: parseFloat(el.style.left),
+    y: parseFloat(el.style.top),
+    w: parseFloat(el.style.width),
+    h: parseFloat(el.style.height),
+    rot: parseInt(el.dataset.rot) || 0,
+    label: el.dataset.label,
+    color: el.dataset.color,
+    wmm: parseInt(el.dataset.wmm),
+    hmm: parseInt(el.dataset.hmm),
+    comment: el.dataset.comment || ''
+  }));
+}
+
+// Restore items from JSON array
+function restoreItems(items) {
+  document.querySelectorAll('.pitem').forEach(e => e.remove());
+  sel = null;
+  updatePropPanel();
+  items.forEach(it => {
+    place(it.x, it.y, it.w, it.h, it.label, it.color, it.rot, it.wmm, it.hmm, it.comment);
+  });
+  // Deselect after restoring
+  if (sel) { sel.classList.remove('sel'); sel = null; updatePropPanel(); }
+}
+
+// Load saved layout list into dropdown
+async function refreshList() {
+  const { data, error } = await sb.from('layouts').select('id,name,updated_at').order('updated_at', { ascending: false });
+  loadSelect.innerHTML = '<option value="">-- 読込 --</option>';
+  if (error) { sStatus('リスト取得失敗: ' + error.message, true); return; }
+  data.forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r.id;
+    opt.textContent = r.name;
+    loadSelect.appendChild(opt);
+  });
+}
+
+// Save
+document.getElementById('btnSave').addEventListener('click', async () => {
+  const name = document.getElementById('saveName').value.trim();
+  if (!name) { sStatus('名前を入力してください', true); return; }
+  const items = serializeItems();
+  // Check if layout with same name exists
+  const { data: existing } = await sb.from('layouts').select('id').eq('name', name).limit(1);
+  let res;
+  if (existing && existing.length > 0) {
+    res = await sb.from('layouts').update({ items, updated_at: new Date().toISOString() }).eq('id', existing[0].id);
+  } else {
+    res = await sb.from('layouts').insert({ name, items });
+  }
+  if (res.error) { sStatus('保存失敗: ' + res.error.message, true); return; }
+  sStatus(`「${name}」を保存しました`);
+  info(`保存完了: ${name} (${items.length}個の什器)`);
+  refreshList();
+});
+
+// Load
+document.getElementById('btnLoad').addEventListener('click', async () => {
+  const id = loadSelect.value;
+  if (!id) { sStatus('レイアウトを選択してください', true); return; }
+  const { data, error } = await sb.from('layouts').select('*').eq('id', id).single();
+  if (error) { sStatus('読込失敗: ' + error.message, true); return; }
+  restoreItems(data.items);
+  document.getElementById('saveName').value = data.name;
+  sStatus(`「${data.name}」を読込みました`);
+  info(`読込完了: ${data.name} (${data.items.length}個の什器)`);
+});
+
+// Delete
+document.getElementById('btnDel').addEventListener('click', async () => {
+  const id = loadSelect.value;
+  if (!id) { sStatus('レイアウトを選択してください', true); return; }
+  const name = loadSelect.options[loadSelect.selectedIndex].textContent;
+  if (!confirm(`「${name}」を削除しますか？`)) return;
+  const { error } = await sb.from('layouts').delete().eq('id', id);
+  if (error) { sStatus('削除失敗: ' + error.message, true); return; }
+  sStatus(`「${name}」を削除しました`);
+  refreshList();
+});
+
+// Enter key in save name field
+document.getElementById('saveName').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btnSave').click();
+});
+
+// Initialize list on load
+refreshList();
+</script>
+</body>
+</html>
